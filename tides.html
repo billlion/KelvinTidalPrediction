@@ -1,0 +1,391 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8"> 
+<title>HTML5 Canvas Test</title>
+<style>
+body 
+{
+    background-color: #fafafc;
+}
+
+button
+{
+	width:70px;
+}
+</style>
+
+<script>
+/* Simulation of Kelvin's Tide Processing Machine
+   Chris Johnson 2016
+
+   Largely a clone of Bill Casselman's programme at
+   http://www.ams.org/samplings/feature-column/fcarc-tidesiii3
+*/
+
+var time = 0; // time in hours
+var framesPerDay = 24*6;
+var frame = 0;
+var phaseName=["M2","S2","N2","K1","O1","P1","K2"];
+
+var coefs = [[0.995, 0.274, 0.225, 0.514, 0.279, 0.167, 0.101], // in feet
+			 [2.5, 0.902, 0.173, 0.141, 0.164, 0.046, 0.265],
+			 [0.59, 0.23, 0.11, 0.95, 0.79, 0.31, 0.06],
+			 [2.104, 0.437, 0.469, 0.321, 0.170, 0.104, 0.127],
+			 [0.656, 0.312, 0.102, 0.719, 0.715, 0.240, 0.095],
+			 [4.712, 1.599, 0.957, 1.615, 1.001, 0.530, 0.463, ],
+			 [1.951, 0.651, 0.416, 0.471, 0.380, 0.142, 0.231]];
+
+var period = [12.42, 12.00, 12.66, 23.93, 25.82, 24.07, 11.97]; // Period in hours
+var scales = [1, 0.80, 0.75, 0.9, 1, 0.3, 0.7]
+var globalScale = 18;
+var currentLocation = 0;
+
+var nPhases = 7;
+var phases=[];
+var pulleyOffset = [];
+
+var nSavedValues = 300;
+var savedStart = 0;
+var savedValues =[];
+var isDrawing=false;
+
+var pulleyRadius = 18;
+var ropeThickness = 2;
+var verticalOffset = 230;
+
+function Load()
+{
+
+    var canvas = document.getElementById("myCanvas");
+    var c = canvas.getContext("2d");
+	c.font="12px sans-serif";
+	SetLocation();
+	SetSpeed(24*6);
+}
+
+function SetSpeed()
+{
+	framesPerDay = parseInt(document.getElementById("speedselect").value);
+	savedValues=[];
+	if (!isDrawing)
+		DrawFrame();
+}
+function SetLocation()
+{
+	currentLocation = parseInt(document.getElementById("locationselect").value);
+	cScale = globalScale*scales[currentLocation];
+	Reset();
+}
+function RunPause()
+{
+	if (isDrawing)
+	{
+		StopDrawing();
+	}
+	else
+	{
+		StartDrawing();
+	}
+}
+
+function Step()
+{
+	if (!isDrawing)
+    {
+		DrawFrame();
+	}
+}
+
+function Reset()
+{
+	StopDrawing();
+	time = 0;
+	frame = 0;
+	savedValues=[];
+	DrawFrame();
+	time = 0;
+	frame = 0;
+	savedValues=[];
+}
+
+function StartDrawing()
+{
+
+	document.getElementById("runpausebutton").innerHTML="Pause";
+	document.getElementById("stepbutton").disabled=true;
+	isDrawing=true;
+	DrawFrame();
+}
+
+function StopDrawing()
+{
+	isDrawing=false;
+	document.getElementById("runpausebutton").innerHTML="Run";
+	document.getElementById("stepbutton").disabled=false;
+}
+
+function GeneratePhases(t)
+{
+	for (var i=0; i<7; i++)
+	{
+		phases[i] = ((i%2)*2-1)*t*2.0*Math.PI/period[i];
+	}
+}
+
+
+
+function RopeMovement(n)
+{
+	var r = 0;
+	for (var i=0; i<n; i++)
+	{
+		r += ((i%2)*-2+1)*cScale*coefs[currentLocation][i]*Math.sin(phases[i])*2;
+	}
+	return r;
+}
+
+function DrawCrank(c, x, y, rad, angle, pulleyAngle)
+{	
+	c.beginPath();
+	c.arc(x, y, rad, 0, 2*Math.PI);
+	c.lineWidth=0.5;
+	c.strokeStyle = '#808080';
+	c.stroke();
+
+	var xb = x+Math.cos(angle)*rad;
+	var yb = y+Math.sin(angle)*rad;
+	c.moveTo(x, y);
+	c.lineTo(xb, yb);
+	c.stroke();
+
+	c.beginPath();
+	c.arc(xb, yb, 1.5, 0, 2*Math.PI);
+	c.fillStyle = '#808080';
+	c.fill();
+
+	c.strokeStyle = '#000080';
+	c.strokeRect(x-rad-2, yb-2, 2*rad+4, 4);
+
+	c.strokeStyle = '#000000';
+
+	var pulleyOffset = 30;
+	c.lineWidth=1.5;
+	c.beginPath();
+	c.moveTo(x, yb-2);
+	c.lineTo(x, yb-2-pulleyOffset);
+	c.stroke();
+
+	DrawPulley(c, x, yb-2-pulleyOffset, pulleyAngle);
+	return yb-2-pulleyOffset - y;
+}
+
+function DrawPulley(c, x, y, angle)
+{
+	var holeDist = pulleyRadius*0.6;
+	var holeRadius = pulleyRadius*0.15;
+
+    var canvas = document.getElementById("myCanvas");
+
+
+	c.beginPath();
+	c.arc(x, y, pulleyRadius, 0, 2*Math.PI);
+	for (var i=0; i<6; i++)
+	{
+		var langle = angle + 2.0*Math.PI*i/6;
+		c.moveTo(x+Math.sin(langle)*holeDist, y+Math.cos(langle)*holeDist);
+		c.arc(x+Math.sin(langle)*holeDist, y+Math.cos(langle)*holeDist, holeRadius,  0, 2*Math.PI,true);
+	} 
+	c.fillStyle = '#c0b040';
+	c.fill();
+
+	c.beginPath();
+	c.arc(x, y, pulleyRadius, 0, 2*Math.PI);
+	c.lineWidth=0.5;
+	c.strokeStyle = '#000000';
+	c.stroke();
+
+	c.beginPath();
+	c.arc(x, y, 2, 0, 2*Math.PI);
+	c.fillStyle = '#000000';
+	c.fill();
+}
+
+function DrawRope(c, x, y)
+{
+	c.beginPath();
+	c.lineWidth=ropeThickness;
+	c.strokeStyle = '#a05000';
+	c.fillStyle = '#a05000';
+	for (var i=0; i<nPhases; i++)
+	{
+		c.moveTo(x+(i-0.5)*(2*pulleyRadius+ropeThickness), y+verticalOffset*((i+1)%2)+pulleyOffset[i]);
+		c.lineTo(x+(i-0.5)*(2*pulleyRadius+ropeThickness), y+verticalOffset*(i%2)+pulleyOffset[i+1]);
+		c.arc(x+i*(2*pulleyRadius+ropeThickness), y+verticalOffset*(i%2)+pulleyOffset[i+1], 
+			  pulleyRadius+0.5*ropeThickness, Math.PI, 0,i%2);
+    }
+	c.stroke();
+
+	c.beginPath();
+	c.arc(x-pulleyRadius-0.5*ropeThickness, y+verticalOffset+pulleyOffset[0], 3, 0, Math.PI*2.0);
+	c.fill();	
+
+	var xp = x+(nPhases-0.5)*(2*pulleyRadius+ropeThickness);
+	var yp = y+0.5*verticalOffset+RopeMovement(nPhases);
+	c.beginPath();
+	c.moveTo(xp, y+verticalOffset*((nPhases+1)%2)+pulleyOffset[nPhases]);
+	c.lineTo(xp, yp);
+	c.stroke();
+
+
+							 
+	c.strokeStyle = '#808080';
+    c.lineWidth = 1;
+	c.beginPath();
+	c.moveTo(xp, yp);
+	c.lineTo(xp+10, yp);
+	c.stroke();
+
+	c.beginPath();
+	c.arc(xp, yp, 3, 0, Math.PI*2.0);
+	c.fill();	
+
+
+	for (var i=0; i<nPhases; i++)
+	{
+		var xp = x+(i-0.5)*(2*pulleyRadius+ropeThickness);
+		var yp = y+0.5*verticalOffset-30+((i%2)*2-1)*RopeMovement(i);
+		c.beginPath();
+		c.arc(xp, yp, 2, 0, Math.PI*2.0);
+		c.fill();	
+	}
+}
+
+function DrawPlot(c, x, y)
+{
+	var xp = Math.ceil(x+(nPhases-0.5)*(2*pulleyRadius+ropeThickness));
+	var yp = Math.ceil(y+0.5*verticalOffset);
+
+
+	c.fillStyle='rgb(255,255,255)';
+	c.fillRect(xp-5,yp-150,nSavedValues+5,300);
+
+	c.lineWidth=1;
+	c.strokeStyle='#e0e0e0';
+	c.beginPath();
+	for (var i=-Math.floor(75/cScale); i<=Math.floor(75/cScale); i++)
+	{
+		if (i!=0)
+		{
+			c.moveTo(xp-4.5, yp+0.5+2*cScale*i);
+			c.lineTo(xp+nSavedValues, yp+0.5+2*cScale*i);
+		}
+	}
+	c.stroke();
+	c.strokeStyle='#a0a0a0';
+	c.beginPath();
+	c.moveTo(xp-4.5, yp+0.5);
+	c.lineTo(xp+nSavedValues, yp+0.5);
+
+	c.stroke();
+
+	c.strokeStyle='#a0a0e0';
+	c.beginPath();
+	for (var i=-5+(frame+5)%framesPerDay; i<nSavedValues; i+=framesPerDay)
+	{
+		c.moveTo(xp+i+0.5,yp+150);
+		c.lineTo(xp+i+0.5,yp-150);
+	}
+	c.stroke();
+
+	c.beginPath();
+	c.strokeStyle = '#4000a0';
+	c.lineWidth = 1.5;
+	for (var i=0; i<nSavedValues; i++)
+	{
+		ind = (savedStart+i+1)%nSavedValues;
+		c.lineTo(xp+i,yp+savedValues[ind]);
+	}
+	c.stroke();
+}
+
+function DrawFrame()
+{
+    var canvas = document.getElementById("myCanvas");
+    var c = canvas.getContext("2d");
+
+	var xofs = 50, yofs = 100;
+
+	c.fillStyle='#fafafc';
+	c.fillRect(0,0,canvas.width,canvas.height);
+
+    GeneratePhases(time);
+	
+	var pulleyAngle = 0;
+	var lastRopePos = 0;
+	pulleyOffset[0]=0;
+	for (var i=0; i<nPhases; i++)
+	{
+		ropePos = RopeMovement(i+1);
+		
+		pulleyAngle = -0.5*(lastRopePos+ropePos)/(pulleyRadius+0.5*ropeThickness);
+
+		var xp = xofs+i*(2*pulleyRadius+ropeThickness);
+		pulleyOffset[i+1] = 
+			DrawCrank(c, xp, yofs+verticalOffset*(i%2), 
+					  coefs[currentLocation][i]*cScale,
+					  phases[i], pulleyAngle*((i%2)*-2+1));
+		lastRopePos = ropePos;
+	}
+
+	for (var i=0; i<nPhases; i++)
+	{
+		var xp = xofs+i*(2*pulleyRadius+ropeThickness);
+		var tw= c.measureText(phaseName[i]).width;
+		c.fillText(phaseName[i],xp-0.5*tw, yofs+verticalOffset+40);
+	}
+
+
+	savedValues[savedStart] = RopeMovement(nPhases);
+	savedStart--;
+	if (savedStart<0) savedStart = nSavedValues-1;
+
+	DrawPlot(c, xofs+10, yofs);
+
+
+	DrawRope(c, xofs, yofs);
+
+    time += 24/framesPerDay;
+	frame++;
+	if (isDrawing) setTimeout("DrawFrame()",20);
+}
+
+</script>
+</head>
+<body onLoad="Load();">
+  <div style="width:625px; margin: 0 auto;">
+	<canvas id="myCanvas" width="620" height="400">
+	</canvas>
+	<div>
+	  <button onClick="RunPause();" id="runpausebutton">Run</button>
+	  <button onClick="Step();" id="stepbutton">Step</button>
+	  <button onClick="Reset();">Reset</button>
+
+	  <select onChange="SetLocation()" id="locationselect">
+		<option value="0">Matarani, Peru</option>
+		<option value="1">Recife, Brazil</option>
+		<option value="2">Yamoto Wan, Kuril Islands</option>
+		<option value="3">New York City</option>
+		<option value="4">Otomari, Sakhalin Island</option>
+		<option value="5">Cordova, Alaska</option>
+		<option value="6">Ras at Tannura, Saudi Arabia</option>
+	  </select>
+
+	  <select onChange="SetSpeed()" id="speedselect">
+		<option value="144">Slow</option>
+		<option value="24">Fast</option>
+	  </select>
+	</div>
+  </div>
+</body>
+</html>
